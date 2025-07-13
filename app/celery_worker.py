@@ -3,17 +3,18 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import os
-from dotenv import load_dotenv
+from app.services.verification_code_service import VerificationCodeService
+from app.db.session import SessionLocal
 
 # Initialize Celery with Redis as broker and backend
-celery_app = Celery(
+celery = Celery(
     'worker',
-    broker='redis://localhost:6379/0',
-    backend='redis://localhost:6379/0',
+    broker=os.getenv('REDIS_URL', 'redis://localhost:6379/0'),
+    backend=os.getenv('REDIS_URL', 'redis://localhost:6379/0'),
 )
-load_dotenv()
-@celery_app.task
-def send_verification_email(email: str):
+
+@celery.task
+def send_verification_email(email: str, user_id: int):
     # Retrieve Gmail credentials from environment variables
     sender_email = os.getenv("SENDER_EMAIL")
     password = os.getenv("GMAIL_APP_PASS")
@@ -28,15 +29,28 @@ def send_verification_email(email: str):
         print("Error: No email provided.")
         return  # Exit early if email is None
 
+    # Generate verification code
+    db = SessionLocal()
+    verification_service = VerificationCodeService(db)
+    verification_code_obj = verification_service.create_code(user_id)
+    verification_code = verification_code_obj.code
+    db.close()
+
     # Set up the email content
     msg = MIMEMultipart()
     msg['From'] = sender_email
     msg['To'] = email
     msg['Subject'] = 'Email Verification'
     
-    # Add the body of the email
-    body = f"Please verify your email by clicking on the link: {email}"
-    msg.attach(MIMEText(body, 'plain'))
+    # Load the email template
+    template_path = os.path.join(os.path.dirname(__file__), "email_templates", "welcome.html")
+    with open(template_path, "r") as f:
+        html_body = f.read()
+    
+    # Replace placeholder with actual verification code
+    html_body = html_body.replace("{{verification_code}}", verification_code)
+
+    msg.attach(MIMEText(html_body, 'html'))
 
     try:
         # Connect to Gmail's SMTP server
