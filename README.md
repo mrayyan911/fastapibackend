@@ -7,7 +7,7 @@ This project is a FastAPI application containerized using Docker and managed wit
 The project follows a structured layout to separate concerns:
 
 ```
-/Users/zulkaif/Desktop/FAST_API-Application/
+/
 ├───.gitignore
 ├───docker-compose.yml
 ├───Dockerfile
@@ -72,7 +72,7 @@ Follow these steps to get the application up and running:
 
    ```bash
    git clone <repository-url>
-   cd FAST_API-Application
+   cd fastapibackend
    ```
 
 2. **Build and run the containers:**
@@ -85,8 +85,7 @@ Follow these steps to get the application up and running:
 
 3. **Access the application:**
 
-   Once the containers are running, you can access the FastAPI application at [http://localhost:8000/api/v1/openapi.json](http://localhost:8000/api/v1/openapi.json) for the OpenAPI documentation.
-
+   Once the containers are running, you can access the FastAPI application at [http://localhost:8000/docs]
 ## Services
 
 The `docker-compose.yml` file defines the following services:
