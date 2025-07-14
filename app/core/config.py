@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     DROP_TABLES_ON_STARTUP: bool = False
     # Security settings
     SECRET_KEY: str
+    EMAIL_VERIFICATION_SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 

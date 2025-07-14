@@ -1,20 +1,13 @@
-from celery import Celery
+
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import os
-from app.services.verification_code_service import VerificationCodeService
-from app.db.session import SessionLocal
+from app.core.security import create_email_verification_token
+from celery_config import celery_obj
 
-# Initialize Celery with Redis as broker and backend
-celery = Celery(
-    'worker',
-    broker=os.getenv('REDIS_URL', 'redis://localhost:6379/0'),
-    backend=os.getenv('REDIS_URL', 'redis://localhost:6379/0'),
-)
-
-@celery.task
-def send_verification_email(email: str, user_id: int):
+@celery_obj.task
+def send_verification_email(email: str):
     # Retrieve Gmail credentials from environment variables
     sender_email = os.getenv("SENDER_EMAIL")
     password = os.getenv("GMAIL_APP_PASS")
@@ -29,12 +22,9 @@ def send_verification_email(email: str, user_id: int):
         print("Error: No email provided.")
         return  # Exit early if email is None
 
-    # Generate verification code
-    db = SessionLocal()
-    verification_service = VerificationCodeService(db)
-    verification_code_obj = verification_service.create_code(user_id)
-    verification_code = verification_code_obj.code
-    db.close()
+    # Generate verification token
+    token = create_email_verification_token(email)
+    verification_link = f"http://localhost:8000/api/v1/auth/verify-email?token={token}"
 
     # Set up the email content
     msg = MIMEMultipart()
@@ -47,8 +37,8 @@ def send_verification_email(email: str, user_id: int):
     with open(template_path, "r") as f:
         html_body = f.read()
     
-    # Replace placeholder with actual verification code
-    html_body = html_body.replace("{{verification_code}}", verification_code)
+    # Replace placeholder with actual verification link
+    html_body = html_body.replace("{{verification_link}}", verification_link)
 
     msg.attach(MIMEText(html_body, 'html'))
 

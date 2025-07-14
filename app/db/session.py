@@ -13,7 +13,7 @@ password = os.getenv("POSTGRES_PASSWORD", "password")
 database_name = os.getenv("POSTGRES_DB", "app")
 
 # Construct the database URL
-DATABASE_URL =  f"postgresql://{username}:{password}@{service_name}:{port}/{database_name}"
+DATABASE_URL = f"postgresql+psycopg2://{username}:{password}@{service_name}:{port}/{database_name}"
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)

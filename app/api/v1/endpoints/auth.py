@@ -2,11 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db
-from app.schemas.schemas import UserCreate, UserLogin, ShowUser
-from app.crud.crud_user import create_user, get_user_by_email,get_user_by_id
+from app.schemas.schemas import UserCreate, UserLogin, ShowUser, ResendVerificationRequest
+from app.crud.crud_user import create_user, get_user_by_email
 from app.core.security import verify_password
-from app.models.models import User # Import User model for type hinting
-from app.celery_worker import send_verification_email # Assuming celery_worker.py remains in app/
+from app.services.verification_service import VerificationService
+from app.task import send_verification_email
 
 router = APIRouter()
 
@@ -23,10 +23,7 @@ def signup(user: UserCreate, background_tasks: BackgroundTasks, db: Session = De
     
     new_user = create_user(db=db, user=user)
     
-    try:
-        background_tasks.add_task(send_verification_email, new_user.email, new_user.id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to send verification email: {str(e)}")
+    background_tasks.add_task(send_verification_email, new_user.email)
 
     return new_user
 
@@ -47,19 +44,21 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
     
     return {"message": "Login successful"}
 
-@router.get("/verify/{user_id}/{code}")
-def verify_email(user_id: int, code: str, db: Session = Depends(get_db)):
-    from app.services.verification_code_service import VerificationCodeService
-    
-    verification_service = VerificationCodeService(db)
-    
-    if verification_service.verify_code(user_id, code):
-        user = get_user_by_id(db, user_id)
-        if user:
-            user.is_verified = True
-            db.commit()
-            return {"message": "Email verified successfully"}
-        else:
-            raise HTTPException(404, detail="User not found")
+@router.get("/verify-email")
+def verify_email(token: str, db: Session = Depends(get_db)):
+    verification_service = VerificationService(db)
+    if verification_service.verify_email(token):
+        return {"message": "Email verified successfully"}
     else:
-        raise HTTPException(400, detail="Invalid or expired verification code")
+        raise HTTPException(400, detail="Invalid or expired verification token")
+
+@router.post("/resend-verification")
+def resend_verification(request: ResendVerificationRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    db_user = get_user_by_email(db, request.email)
+    if not db_user:
+        raise HTTPException(404, detail="User not found")
+    if db_user.is_verified:
+        raise HTTPException(400, detail="Email already verified")
+    
+    background_tasks.add_task(send_verification_email, db_user.email)
+    return {"message": "Verification email resent"}
