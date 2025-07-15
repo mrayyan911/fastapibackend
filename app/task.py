@@ -24,7 +24,7 @@ def send_verification_email(email: str):
 
     # Generate verification token
     token = create_email_verification_token(email)
-    verification_link = f"http://localhost:8000/api/v1/auth/verify-email?token={token}"
+    verification_link = f"http://localhost:8000/api/v1/verify-email?token={token}"
 
     # Set up the email content
     msg = MIMEMultipart()
