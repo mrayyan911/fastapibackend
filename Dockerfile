@@ -16,5 +16,8 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 # Copy the rest of the application's code into the container at /app
 COPY ./app /app
 
+# Ensure correct permissions for mounted files
+RUN chmod -R 777 /app
+
 # Command to run the application
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
