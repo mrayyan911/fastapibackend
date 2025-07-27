@@ -1,19 +1,22 @@
-import os
+# db/session.py
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine
-from app.db.base import Base
 import os
 
-#db connection variables
-service_name = os.getenv("DB_SERVICE_NAME", "db")
-port = os.getenv("DB_PORT", "5432")
-username = os.getenv("POSTGRES_USER", "user")
-password = os.getenv("POSTGRES_PASSWORD", "password")
-database_name = os.getenv("POSTGRES_DB", "app")
+DATABASE_URL = (
+    f"postgresql+psycopg2://{os.getenv('POSTGRES_USER','user')}:"
+    f"{os.getenv('POSTGRES_PASSWORD','password')}@"
+    f"{os.getenv('DB_SERVICE_NAME','db')}:"
+    f"{os.getenv('DB_PORT','5432')}/"
+    f"{os.getenv('POSTGRES_DB','app')}"
+)
 
-# Construct the database URL
-DATABASE_URL = f"postgresql+psycopg2://{username}:{password}@{service_name}:{port}/{database_name}"
-
-engine = create_engine(DATABASE_URL)
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+def get_db_session():
+    try:
+        db = SessionLocal()  
+        yield db
+    finally:
+        db.close()

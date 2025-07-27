@@ -28,6 +28,7 @@ The project follows a structured layout to separate concerns:
     │   ├───config.py
     │   ├───dependencies.py
     │   ├───security.py
+    │   ├───jwt_handler.py
     │   └───__pycache__/
     ├───crud/
     │   ├───crud_user.py
