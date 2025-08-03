@@ -1,11 +1,12 @@
 services:
   web:
     build: .
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --app-dir /app
+    command: gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:8000 --workers 1 --log-level debug --access-logfile /app/logs/access.log --error-logfile /app/logs/error.log
     ports:
       - "8000:8000"
     volumes:
       - ./app:/app
+      - ./firebase-credentials.json:/app/firebase-credentials.json
     environment:
       - PYTHONPATH=/
       - REDIS_URL=redis://redis:6379/0
@@ -32,6 +33,7 @@ services:
       - ./.env
     volumes:
       - ./app:/app
+      - ./firebase-credentials.json:/app/firebase-credentials.json
     environment:
       - PYTHONPATH=/
       - REDIS_URL=redis://redis:6379/0

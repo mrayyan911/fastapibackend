@@ -19,5 +19,8 @@ COPY ./app /app
 # Ensure correct permissions for mounted files
 RUN chmod -R 777 /app
 
-# Command to run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Expose port (not strictly required with docker-compose, but useful)
+EXPOSE 8000
+
+# Default command (can be overridden by docker-compose)
+#CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "app.main:app", "--bind", "0.0.0.0:8000", "--workers", "1"]
