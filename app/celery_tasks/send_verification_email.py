@@ -3,11 +3,10 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import os
-from app.core.security import create_email_verification_token
-from celery_config import celery_obj
-
-@celery_obj.task
-def send_verification_email(email: str):
+from app.celery_config import celery_obj
+from pathlib import Path
+@celery_obj.task(name="send_verification_email")
+def send_verification_email(email: str,verification_link: str):
     # Retrieve Gmail credentials from environment variables
     sender_email = os.getenv("SENDER_EMAIL")
     password = os.getenv("GMAIL_APP_PASS")
@@ -23,8 +22,8 @@ def send_verification_email(email: str):
         return  # Exit early if email is None
 
     # Generate verification token
-    token = create_email_verification_token(email)
-    verification_link = f"http://localhost:8000/api/v1/verify-email?token={token}"
+    
+    
 
     # Set up the email content
     msg = MIMEMultipart()
@@ -33,7 +32,8 @@ def send_verification_email(email: str):
     msg['Subject'] = 'Email Verification'
     
     # Load the email template
-    template_path = os.path.join(os.path.dirname(__file__), "email_templates", "welcome.html")
+    #give the correct path to the template which is in app/email_templates/verify.html use robust method
+    template_path = Path(__file__).resolve().parent.parent / 'email_templates' / 'verify.html'
     with open(template_path, "r") as f:
         html_body = f.read()
     

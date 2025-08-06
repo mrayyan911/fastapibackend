@@ -1,53 +1,127 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+from firebase_admin import auth as firebase_auth
+from firebase_admin import exceptions as firebase_exceptions
+
+
 from app.core.jwt_handler import create_access_token, decode_access_token
 from app.db.session import get_db_session
-from app.schemas.schemas import UserCreate, UserLogin, ShowUser, ResendVerificationRequest
+from app.core.security import verify_password, hash_password
 from app.crud.crud_user import create_user, get_user_by_email
-from app.core.security import verify_password
-from app.services.verification_service import VerificationService
-from app.task import send_verification_email
-from fastapi.security import OAuth2PasswordBearer
-from fastapi import status
-
+from app.schemas.schemas import (
+    UserCreate, UserLogin, ShowUser, ResendVerificationRequest
+)
+from app.celery_tasks.send_verification_email import send_verification_email
 router = APIRouter()
 
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+
+
+
+
+# -------------------
+# SIGNUP
+# -------------------
 @router.post("/signup", response_model=ShowUser)
-def signup(user: UserCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db_session)):
-    if not user.email:
-        raise HTTPException(status_code=400, detail="Email is required")
-    if not user.password:
-        raise HTTPException(status_code=400, detail="Password is required")
-    
+def signup(user: UserCreate, db: Session = Depends(get_db_session)):
     db_user = get_user_by_email(db, user.email)
     if db_user:
         raise HTTPException(400, detail="Email already registered")
-    
-    new_user = create_user(db=db, user=user)
-    
-    background_tasks.add_task(send_verification_email, new_user.email)
+
+    try:
+        # Create user in Firebase
+        firebase_user = firebase_auth.create_user(
+            email=user.email,
+            password=user.password
+        )
+        
+        # Send email verification
+        verification_link = firebase_auth.generate_email_verification_link(user.email)
+        send_verification_email.delay(user.email, verification_link)
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to create user in Firebase: {e}")
+
+    # Create user in your backend DB with hashed password and firebase_uid
+    new_user = create_user(
+        db=db,
+        user=user,
+        firebase_uid=firebase_user.uid
+    )
 
     return new_user
 
+
+# -------------------
+# LOGIN
+# -------------------
 @router.post("/login")
 def login(user: UserLogin, db: Session = Depends(get_db_session)):
-    if not user.email:
-        raise HTTPException(status_code=400, detail="Email is required")
-    if not user.password:
-        raise HTTPException(status_code=400, detail="Password is required")
-    
     db_user = get_user_by_email(db, user.email)
-    
-    if not db_user or not verify_password(user.password, db_user.hashed_password):
-        raise HTTPException(401, detail="Invalid credentials")
-    
-    if not db_user.is_verified:
-        raise HTTPException(401, detail="Email not verified")
-    
-    access_token = create_access_token(data={"sub": db_user.email})
-    return {"access_token": access_token, "token_type": "bearer"}
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found in the database.")
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+    # Verify password
+    if not verify_password(user.password, db_user.password):
+        raise HTTPException(status_code=401, detail="Invalid password")
+
+    # Optional: Check email verification status with Firebase
+    if db_user.firebase_uid:
+        try:
+            firebase_user = firebase_auth.get_user(db_user.firebase_uid)
+            if not firebase_user.email_verified:
+                raise HTTPException(
+                    status_code=401, detail="Email not verified. Please verify your email."
+                )
+            
+        except firebase_exceptions.NotFoundError:
+            # This case should ideally not happen if firebase_uid is correctly stored
+            print(f"Warning: Firebase user not found for UID {db_user.firebase_uid}")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Firebase error during verification check: {e}")
+
+    # Create JWT for your API
+    access_token = create_access_token(data={"sub": db_user.email})
+    firebase_token = firebase_auth.create_custom_token(db_user.firebase_uid)
+    return {
+
+        "firebase_token": firebase_token.decode('utf-8'),
+        "jwt_token": access_token,
+        "token_type": "bearer"
+    }
+
+
+# -------------------
+# RESEND VERIFICATION EMAIL
+# -------------------
+@router.post("/resend-verification-email")
+def resend_verification_email(request: ResendVerificationRequest, db: Session = Depends(get_db_session)):
+    db_user = get_user_by_email(db, request.email)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    if not db_user.firebase_uid:
+        raise HTTPException(status_code=400, detail="User not linked to Firebase for verification.")
+
+    try:
+        firebase_user = firebase_auth.get_user(db_user.firebase_uid)
+        if firebase_user.email_verified:
+            raise HTTPException(status_code=400, detail="Email already verified.")
+
+        verification_link = firebase_auth.generate_email_verification_link(request.email)
+        send_verification_email.delay(request.email, verification_link)
+        return {"message": "Verification email sent successfully."}
+    except firebase_exceptions.NotFoundError:
+        raise HTTPException(status_code=404, detail="Firebase user not found.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to send verification email: {e}")
+
+
+# -------------------
+# CURRENT USER
+# -------------------
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db_session)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -69,27 +143,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     
     return user
 
+
 @router.get("/me", response_model=ShowUser)
 def read_users_me(current_user: ShowUser = Depends(get_current_user)):
     return current_user
-
-
-
-@router.get("/verify-email")
-def verify_email(token: str, db: Session = Depends(get_db_session)):
-    verification_service = VerificationService(db)
-    if verification_service.verify_email(token):
-        return {"message": "Email verified successfully"}
-    else:
-        raise HTTPException(400, detail="Invalid or expired verification token")
-    
-@router.post("/resend-verification")
-def resend_verification(request: ResendVerificationRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db_session)):
-    db_user = get_user_by_email(db, request.email)
-    if not db_user:
-        raise HTTPException(404, detail="User not found")
-    if db_user.is_verified:
-        raise HTTPException(400, detail="Email already verified")
-    
-    background_tasks.add_task(send_verification_email, db_user.email)
-    return {"message": "Verification email resent"}

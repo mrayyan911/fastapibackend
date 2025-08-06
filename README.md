@@ -16,41 +16,48 @@ The project follows a structured layout to separate concerns:
 ├───.git/...
 └───app/
     ├───__init__.py
-    ├───celery_worker.py
+    ├───celery_config.py
     ├───main.py
     ├───__pycache__/
     ├───api/
     │   └───v1/
     │       └───endpoints/
     │           ├───auth.py
+    │           ├───project_image.py
+    │           ├───project.py
     │           └───__pycache__/
+    ├───celery_tasks/
+    │   ├───__init__.py
+    │   ├───send_verification_email.py
+    │   └───__pycache__/
     ├───core/
     │   ├───config.py
-    │   ├───dependencies.py
-    │   ├───security.py
+    │   ├───firebase.py
     │   ├───jwt_handler.py
+    │   ├───security.py
     │   └───__pycache__/
     ├───crud/
+    │   ├───crud_project_image.py
+    │   ├───crud_project.py
     │   ├───crud_user.py
-    │   ├───crud_verification_code.py
     │   └───__pycache__/
     ├───db/
     │   ├───base.py
-    │   ├───init_db.py
     │   ├───session.py
     │   └───__pycache__/
     ├───email_templates/
-    │   └───welcome.html
+    │   └───verify.html
+    ├───logs/
+    │   ├───access.log
+    │   └───error.log
     ├───models/
     │   ├───models.py
     │   └───__pycache__/
     ├───schemas/
     │   ├───schemas.py
     │   └───__pycache__/
-    ├───services/
-    │   ├───verification_code_service.py
-    │   └───__pycache__/
-    └───tests/
+    └───services/
+        └───__pycache__/
 ```
 
 - **`app/`**: This directory contains the core FastAPI application code.
